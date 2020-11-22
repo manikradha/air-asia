@@ -1,1 +1,1 @@
-Please look on to tech doc AirAsia_CarPark
+Please look into the technical doc AirAsia_CarPark
