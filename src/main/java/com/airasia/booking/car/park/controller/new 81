@@ -1,0 +1,988 @@
+package com.knowledge.base.knowledgebase.controller;
+
+import com.eaio.uuid.UUID;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.knowledge.base.knowledgebase.model.*;
+import com.knowledge.base.knowledgebase.model.humansheet.HumanSheet;
+import com.knowledge.base.knowledgebase.model.internal.Comment;
+import com.knowledge.base.knowledgebase.model.internal.FileSheet;
+import com.knowledge.base.knowledgebase.model.internal.RelationLink;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.lucene.search.join.ScoreMode;
+import org.elasticsearch.action.bulk.*;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.update.UpdateRequest;
+import org.elasticsearch.action.update.UpdateResponse;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.index.query.*;
+import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.script.Script;
+import org.elasticsearch.script.ScriptType;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.ModelAndView;
+
+import java.io.File;
+import java.time.Instant;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@RestController
+public class ReportController {
+
+    @Autowired
+    private RestHighLevelClient esClient;
+
+    @Autowired
+    private ElasticsearchOperations elasticsearchOperations;
+
+    @Autowired
+    private ElasticsearchOperations esOperation;
+
+    @Value("${kb.persist.file.path}")
+    private String path;
+
+    @Value("${kb.page.display.total.record}")
+    private int totalRecords;
+
+
+    @GetMapping("/")
+    public ModelAndView index() {
+        ModelAndView mav = new ModelAndView("upload");
+        mav.addObject("reports", Collections.emptyList());
+        mav.addObject("searchReports", Collections.emptyList());
+        mav.addObject("countReports", Collections.emptyList());
+        mav.addObject("viewName", "Left1");
+        return mav;
+    }
+
+    /* @PostMapping(value = "/create/report", consumes = {MediaType.APPLICATION_JSON_VALUE,
+             MediaType.MULTIPART_FORM_DATA_VALUE})
+     @Transactional
+     public ResponseEntity<Report> createReport(@RequestPart Report report, @RequestPart("files") List<MultipartFile> multipartFiles) throws IllegalArgumentException {
+         return ResponseEntity.accepted().body(create(report, multipartFiles));
+     }
+ */
+    @RequestMapping(value = "/create/humanSheet",
+            method = RequestMethod.POST,
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public String createHumanSheet(@RequestBody HumanSheet humanSheet) throws Exception {
+        return createHumanSheets(Collections.singleton(humanSheet));
+    }
+
+    public String createHumanSheets(Set<HumanSheet> humanSheets) throws Exception {
+        BulkRequest bulkRequest = new BulkRequest();
+        humanSheets.stream().forEach(humanSheet -> {
+            long createdOn = Instant.now().toEpochMilli();
+            String humanSheetId = new UUID().toString();
+            humanSheet.setUuid(humanSheetId);
+            humanSheet.setCreatedTimestamp(createdOn);
+            IndexRequest humanSheetQuery = new IndexRequest();
+            humanSheetQuery.id(humanSheet.getUuid());
+            humanSheetQuery.index("humansheet");
+            Set<IdentitySheet> humanIdentities = humanSheet.getHumanIdentities();
+            if (humanIdentities != null && !humanIdentities.isEmpty()) {
+                humanIdentities.stream().forEach(humanIdentity -> {
+                    String identitySheetId = new UUID().toString();
+                    humanIdentity.setUuid(identitySheetId);
+                    humanIdentity.setCreatedTimestamp(createdOn);
+                    IndexRequest identitySheetQuery = new IndexRequest();
+                    identitySheetQuery.id(humanIdentity.getUuid());
+                    identitySheetQuery.index("identitysheet");
+                    identitySheetQuery.source(new ObjectMapper().convertValue(humanIdentity, Map.class));
+                    bulkRequest.add(identitySheetQuery);
+                });
+            }
+            Set<Comment> comments = humanSheet.getHumanComments();
+            if (comments != null && !comments.isEmpty()) {
+                comments.stream().forEach(humancomment -> {
+                    String commentId = new UUID().toString();
+                    humancomment.setUuid(commentId);
+                    humancomment.setCreatedTimestamp(createdOn);
+                });
+            }
+            Set<RelationLink> links = humanSheet.getHumanLinks();
+            if (links != null && !links.isEmpty()) {
+                links.stream().forEach(humanLink -> {
+                    String humanLinkId = new UUID().toString();
+                    humanLink.setUuid(humanLinkId);
+                    humanLink.setCreatedTimestamp(createdOn);
+                });
+            }
+            humanSheetQuery.source(new ObjectMapper().convertValue(humanSheet, Map.class));
+            bulkRequest.add(humanSheetQuery);
+        });
+        BulkResponse response = esClient.bulk(bulkRequest, RequestOptions.DEFAULT);
+        String humanIndexIds = null;
+        if (!response.hasFailures()) {
+            List<String> humanIds = Arrays.stream(response.getItems()).filter(bulkItemResponse -> "humansheet".equals(bulkItemResponse.getIndex())).map(BulkItemResponse::getId).collect(Collectors.toList());
+            humanIndexIds = String.join(",", humanIds);
+        }
+        return humanIndexIds;
+    }
+
+    @RequestMapping(value = "/update/humanSheet/{humanSheetId}",
+            method = RequestMethod.PUT,
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public RestStatus updateHumanSheetById(@PathVariable String
+                                                   humanSheetId, @RequestBody Map<String, Object> paramMap) throws Exception {
+        return updateHumanSheet(humanSheetId, paramMap);
+    }
+
+    public RestStatus updateHumanSheet(String humanSheetId, Map<String, Object> paramMap) throws Exception {
+        UpdateRequest updateRequest = new UpdateRequest("humansheet", humanSheetId);
+        paramMap.put("updatedTimestamp", Instant.now().toEpochMilli());
+        updateRequest.doc(paramMap);
+        UpdateResponse updateResponse = esClient.update(updateRequest, RequestOptions.DEFAULT);
+        return updateResponse.status();
+    }
+
+    @RequestMapping(value = "/update/humanSheet/{humanSheetId}/comment/{commentId}",
+            method = RequestMethod.PUT,
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public RestStatus updateHumanSheetById(@PathVariable String humanSheetId, @PathVariable String
+            commentId, @RequestBody Map<String, Object> paramMap) throws Exception {
+        return updateHumanSheetComment(humanSheetId, commentId, paramMap);
+    }
+
+    public RestStatus updateHumanSheetComment(String humanSheetId, String commentId, Map<String, Object> params) throws Exception {
+
+        params.put("updatedTimestamp", Instant.now().toEpochMilli());
+        String fields = params.keySet().stream().map(field -> "comment." + field + " = params." + field).collect(Collectors.joining(";"));
+        params.put("uuid", commentId);
+        Script inline = new Script(ScriptType.INLINE, "painless",
+                "if(ctx._source.containsKey('humanComments') && ctx._source['humanComments'] != null){" +
+                        " def comment = ctx._source.humanComments.find(humanComment -> humanComment.uuid == params.uuid);" +
+                        " if(comment != null){" +
+                          fields +";" +
+                        " }" +
+                        " ctx._source.updatedTimestamp = params.updatedTimestamp"+
+                        "}",
+                params);
+        UpdateRequest updateRequest = new UpdateRequest("humansheet", humanSheetId);
+        updateRequest.script(inline);
+        UpdateResponse updateResponse = esClient.update(updateRequest, RequestOptions.DEFAULT);
+        return updateResponse.status();
+    }
+
+    @RequestMapping(value = "/add/humanSheet/{humanSheetId}/comment",
+            method = RequestMethod.POST,
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public RestStatus addHumanSheetCommentById(@PathVariable String
+                                                       humanSheetId, @RequestBody Map<String, Object> paramMap) throws Exception {
+        return addHumanSheetComment(humanSheetId, paramMap);
+    }
+
+    public RestStatus addHumanSheetComment(String humanSheetId, Map<String, Object> params) throws Exception {
+        UpdateRequest updateRequest = new UpdateRequest("humansheet", humanSheetId);
+        params.put("uuid", new UUID().toString());
+        params.put("createdTimestamp", Instant.now().toEpochMilli());
+        params.put("updatedTimestamp", null);
+        Script inline = new Script(ScriptType.INLINE, "painless",
+                "if(!ctx._source.containsKey('humanComments') || ctx._source['humanComments'] == null ){" +
+                        " ctx._source['humanComments']=[]" +
+                        "}" +
+                        "ctx._source.humanComments.add(params)", params);
+        updateRequest.script(inline);
+        UpdateResponse updateResponse = esClient.update(updateRequest, RequestOptions.DEFAULT);
+        return updateResponse.status();
+    }
+
+    @RequestMapping(value = "/add/identitySheet/{identitySheetId}/comment",
+            method = RequestMethod.POST,
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public RestStatus addIdentitySheetCommentById(@PathVariable String
+                                                           identitySheetId, @RequestBody Map<String, Object> paramMap) throws Exception {
+        return addIdentitySheetComment(identitySheetId, paramMap);
+    }
+
+    public RestStatus addIdentitySheetComment(String identitySheetId, Map<String, Object> params) throws Exception {
+        UpdateRequest updateRequest = new UpdateRequest("identitysheet", identitySheetId);
+        params.put("uuid", new UUID().toString());
+        params.put("createdTimestamp", Instant.now().toEpochMilli());
+        params.put("updatedTimestamp", null);
+        Script inline = new Script(ScriptType.INLINE, "painless",
+                "if(!ctx._source.containsKey('identityComments') || ctx._source['identityComments'] == null){" +
+                        " ctx._source['identityComments']=[]" +
+                        "}" +
+                        "ctx._source.identityComments.add(params)", params);
+        updateRequest.script(inline);
+        UpdateResponse updateResponse = esClient.update(updateRequest, RequestOptions.DEFAULT);
+        return updateResponse.status();
+    }
+
+    @RequestMapping(value = "/delete/humanSheet/{humanSheetId}/comment/{commentId}",
+            method = RequestMethod.DELETE)
+    public RestStatus deleteHumanSheetById(@PathVariable String humanSheetId, @PathVariable String
+            commentId) throws Exception {
+        return removeHumanSheetComment(humanSheetId, commentId);
+    }
+
+    public RestStatus removeHumanSheetComment(String humanSheetId, String commentId) throws Exception {
+        Map<String, Object> params= new HashMap<>();
+        params.put("uuid", commentId);
+        UpdateRequest updateRequest = new UpdateRequest("humansheet", humanSheetId);
+        Script inline = new Script(ScriptType.INLINE, "painless",
+                "if(ctx._source.containsKey('humanComments') && ctx._source['humanComments'] != null){" +
+                        " ctx._source.humanComments.removeIf(humanComment -> humanComment.uuid == params.uuid)" +
+                        "}", params);
+        updateRequest.script(inline);
+        UpdateResponse updateResponse = esClient.update(updateRequest, RequestOptions.DEFAULT);
+        return updateResponse.status();
+    }
+
+    @GetMapping("/search/humanSheet/{humanSheetId}")
+    public HumanSheet searchHumanSheet(@PathVariable String humanSheetId) throws  Exception{
+        return elasticsearchOperations.get(humanSheetId,HumanSheet.class, IndexCoordinates.of("humansheet"));
+    }
+
+    /**
+     * @RequestMapping(value = "/identitySheet/{identitySheetId}/comment/{commentId}",
+     * method = RequestMethod.POST,
+     * consumes = MediaType.APPLICATION_JSON_VALUE)
+     * public boolean updateIdentityComment(@PathVariable String identitySheetId,
+     * @PathVariable String commentId,
+     * @RequestBody Map<String                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               ,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               Object> comment) throws Exception {
+     * UpdateRequest updateRequest = new UpdateRequest();
+     * updateRequest.id(identitySheetId);
+     * <p>
+     * Script script = new Script(
+     * "for (int i = 0; i < ctx._source.identityComments.size(); i++)" +
+     * "{" +
+     * "if(ctx._source.identityComments[i].uuid  == \"" + commentId + "\")" +
+     * "{" +
+     * "ctx._source.identityComments[i].description = summa;" +
+     * "}" +
+     * "}");
+     * updateRequest.script(script);
+     * // updateRequest.s
+     * esClient.update(updateRequest, RequestOptions.DEFAULT);
+     * return true;
+     * }
+     * @RequestMapping(value = "/identitySheet/{identitySheetId}/comment",
+     * method = RequestMethod.POST,
+     * consumes = MediaType.APPLICATION_JSON_VALUE)
+     * public boolean addIdentityComment(@PathVariable String identitySheetId,
+     * @RequestBody Map<String                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               ,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               Object> comment) throws Exception {
+     * UpdateRequest updateRequest = new UpdateRequest();
+     * updateRequest.index("identitysheet");
+     * updateRequest.id(identitySheetId);
+     * updateRequest.doc(comment);
+     * esClient.update(updateRequest, RequestOptions.DEFAULT);
+     * GetRequest getRequest = new GetRequest();
+     * getRequest.id(identitySheetId);
+     * getRequest.index("identitysheet");
+     * esClient.get(getRequest, RequestOptions.DEFAULT);
+     * return true;
+     * }
+     * <p>
+     * /*
+     * @PostMapping("/update/humanSheet/comment") public HumanSheet updateHumanSheetComment(@RequestBody Map<String,Object> comment) {
+     * HumanSheet humanSheet = getHumanSheetByCommentId(comment.getUuid());
+     * if (humanSheet == null) {
+     * throw new KnowledgeBaseException("no such comment Id exists in the HumanSheet");
+     * }
+     * comment.setUpdatedTimestamp(comment.getCreatedTimestamp());
+     * humanSheet.getHumanComments().removeIf(humanComment -> {
+     * if (humanComment.getUuid().equals(comment.getUuid())) {
+     * comment.setCreatedTimestamp(humanComment.getCreatedTimestamp());
+     * return true;
+     * }
+     * return false;
+     * });
+     * humanSheet.getHumanComments().add(comment);
+     * return upsertHumanSheet(humanSheet, comment.getUpdatedTimestamp());
+     * }
+     */
+    /*
+    private void updateIdentitySheet(IdentitySheet identitySheet) {
+        IdentitySheet identitySheetResult = getIdentitySheet(identitySheet);
+        if (identitySheetResult == null) {
+            upsertIdentitySheet(identitySheet, null);
+        }
+    }
+
+    @PostMapping(value = "/create/report")
+    public Report createReport(@RequestBody Report report) {
+        return upsertReport(report, null);
+    }
+
+
+   /* @Transactional
+    public Report upsertReport(Report report, Long updateTimestamp) {
+        IndexQuery indexQuery = new IndexQuery();
+        indexQuery.setId(report.getUuid());
+        report.setUpdatedTimestamp(updateTimestamp);
+        report.getFileSheets().stream().forEach(fileSheet -> {
+            fileSheet.getFileIdentities().stream().forEach(this::updateIdentitySheet);
+        });
+        indexQuery.setObject(report);
+        elasticsearchOperations.index(indexQuery);
+        elasticsearchOperations.refresh(Report.class);
+        GetQuery query = new GetQuery();
+        query.setId(report.getUuid());
+        return elasticsearchOperations.queryForObject(query, Report.class);
+    }
+
+    @PostMapping(value = "/create/identitySheet")
+    public IdentitySheet createIdentitySheet(@RequestBody IdentitySheet identitySheet) {
+        return upsertIdentitySheet(identitySheet, null);
+    }
+
+
+    public IdentitySheet upsertIdentitySheet(IdentitySheet identitySheet, Long updateTimestamp) {
+        IndexQuery indexQuery = new IndexQuery();
+        indexQuery.setId(identitySheet.getUuid());
+        identitySheet.setUpdatedTimestamp(updateTimestamp);
+        indexQuery.setObject(identitySheet);
+        elasticsearchOperations.index(indexQuery);
+        elasticsearchOperations.refresh(IdentitySheet.class);
+        GetQuery query = new GetQuery();
+        query.setId(identitySheet.getUuid());
+        return elasticsearchOperations.queryForObject(query, IdentitySheet.class);
+    }*/
+
+    /*  public Report create(Report report, List<MultipartFile> multipartFiles) throws KnowledgeBaseException {
+          List<FileSheet> esFiles = report.getFileSheets();
+          if (esFiles.size() != multipartFiles.size()) {
+              throw new KnowledgeBaseException("Mismatch found in arguments between identities and files loaded");
+          }
+          if (esFiles.isEmpty()) {
+              throw new KnowledgeBaseException("No files loaded");
+          }
+          IntStream.range(0, esFiles.size())
+                  .forEach(index -> {
+                      MultipartFile multipartFile = multipartFiles.get(index);
+                      FileSheet esFile = esFiles.get(index);
+                      try {
+                          populateFileSheet(multipartFile, esFile);
+                      } catch (Exception e) {
+                          throw new KnowledgeBaseException("Could not process the file " + multipartFile.getOriginalFilename());
+                      }
+                  });
+          return upsertReport(report, null);
+      }
+  */
+    private void populateFileSheet(MultipartFile multipartFile, FileSheet fileSheet) throws Exception {
+        fileSheet.setFileName(multipartFile.getOriginalFilename());
+        String actualPath = path + "/" + fileSheet.getUuid();
+        fileSheet.setFilePath(actualPath);
+        fileSheet.setFileType(multipartFile.getContentType());
+        multipartFile.transferTo(new File(actualPath));
+    }
+
+    /*
+        @PostMapping("/uploadFile")
+        public ModelAndView uploadFile(@RequestParam(value = "files") MultipartFile inputFile,
+                                       @RequestParam(value = "include", required = false) String[] include,
+                                       @RequestParam(value = "ignore", required = false) String[] ignore,
+                                       @RequestParam(value = "ntkGroup", required = false) String[] ntkGroup,
+                                       @RequestParam(value = "ntkValue", required = false) String[] ntkValue,
+                                       @RequestParam(value = "system", required = false) String system,
+                                       @RequestParam(value = "reportName", required = false) String reportName,
+                                       @RequestParam(value = "userName", required = false) String userName) {
+
+            if (include.length != ignore.length) {
+                throw new KnowledgeBaseException("identity types and id is not property specified ");
+            }
+            if (ntkGroup.length != ntkValue.length) {
+                throw new KnowledgeBaseException("ntk group and value is not property specified ");
+            }
+            Set<IdentitySheet> identities = new HashSet<>();
+            for (int i = 0; i < include.length; i++) {
+                identities.add(new IdentitySheet(null, ignore[i], include[i], null, null, null));
+            }
+            Set<NTK> ntks = new HashSet<>();
+            for (int i = 0; i < ntkGroup.length; i++) {
+                ntks.add(new NTK(null, ntkGroup[i], ntkValue[i], null));
+            }
+            FileSheet files = new FileSheet(null, identities, ntks, null);
+            Report report = new Report(null, system, reportName, userName, null, null, null);
+            report.setFileSheets(Collections.singletonList(files));
+            try {
+                Report reportCreated = create(report, Collections.singletonList(inputFile));
+                ModelAndView mav = new ModelAndView();
+                mav.addObject("reports", reportCreated);
+                mav.setViewName("upload");
+                mav.addObject("viewName", "Left1");
+                return mav;
+            } catch (Exception | Error e) {
+                throw new KnowledgeBaseException(e.getMessage());
+            }
+        }
+
+
+        @PostMapping("/search")
+        public ModelAndView search(@RequestParam(value = "identityId", required = false) String identityId,
+                                   @RequestParam(value = "identityType", required = false) String identityType,
+                                   @RequestParam(value = "reportId", required = false) String reportId,
+                                   @RequestParam(value = "reportFileId", required = false) String reportFileId,
+                                   @RequestParam(value = "start", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm") Date start,
+                                   @RequestParam(value = "end", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm") Date end) {
+            ModelAndView mav = new ModelAndView();
+            if ((StringUtils.isNotBlank(identityId) && StringUtils.isNotBlank(identityType)) || StringUtils.isNotBlank(identityId)) {
+                mav.addObject("searchReports", searchReportByIdentitySheet(new IdentitySheet(null, identityId, identityType, null, null, null)));
+            } else if (StringUtils.isNotBlank(reportId)) {
+                mav.addObject("searchReports", searchReport(reportId));
+            } else if (StringUtils.isNotBlank(reportFileId)) {
+                mav.addObject("searchReports", buildReportByFileIdQuery(reportFileId));
+            } else if (start != null && end != null) {
+                long startTime = new Timestamp(start.getTime()).getTime();
+                long endTime = new Timestamp(end.getTime()).getTime();
+                mav.addObject("searchReports", searchReportByTimestamp(startTime, endTime));
+            } else if (StringUtils.isBlank(identityId) && StringUtils.isBlank(identityType) && StringUtils.isBlank(reportId) && StringUtils.isBlank(reportFileId) && start == null && end == null) {
+                mav.addObject("searchReports", searchAllReports());
+            }
+            mav.addObject("viewName", "Left2");
+            mav.setViewName("upload");
+            return mav;
+        }
+
+        @PostMapping("/delete")
+        public ModelAndView delete(@RequestParam(value = "reportIdDelete", required = false) String reportIdDelete,
+                                   @RequestParam(value = "fileIdDelete", required = false) String fileIdDelete) {
+            ModelAndView mav = new ModelAndView();
+            if (StringUtils.isNotBlank(reportIdDelete)) {
+                deleteReport(reportIdDelete);
+                mav.addObject("deletedReports", reportIdDelete);
+            } else if (StringUtils.isNotBlank(fileIdDelete)) {
+                deleteFile(fileIdDelete);
+                mav.addObject("deletedFiles", fileIdDelete);
+            }
+            mav.addObject("viewName", "Left4");
+            mav.setViewName("upload");
+            return mav;
+        }
+
+        @PostMapping("/searchCount")
+        public ModelAndView searchCount(@RequestParam(value = "identityIdCount", required = false) String identityIdCount,
+                                        @RequestParam(value = "identityTypeCount", required = false) String identityTypeCount,
+                                        @RequestParam(value = "startCount", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm") Date startCount,
+                                        @RequestParam(value = "endCount", required = false) @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm") Date endCount) {
+            ModelAndView mav = new ModelAndView();
+            if (StringUtils.isNotBlank(identityIdCount) && StringUtils.isNotBlank(identityTypeCount)) {
+                mav.addObject("countReports", searchIdentityHits(new IdentitySheet(null, identityIdCount, identityTypeCount, null, null, null)));
+            } else if (startCount != null && endCount != null) {
+                long startTime = new Timestamp(startCount.getTime()).getTime();
+                long endTime = new Timestamp(endCount.getTime()).getTime();
+                mav.addObject("countReports", countReportByTimestamp(startTime, endTime));
+            } else if (StringUtils.isBlank(identityIdCount) && StringUtils.isBlank(identityTypeCount) && startCount == null && endCount == null) {
+                mav.addObject("countReports", searchAllCount());
+            }
+            mav.addObject("viewName", "Left3");
+            mav.setViewName("upload");
+            return mav;
+        }
+
+        @GetMapping("/download/{fileId}")
+        public ResponseEntity<Resource> downloadFile(@PathVariable String fileId) throws IOException {
+            Report report = getReportByFileId(fileId);
+            if (report == null) {
+                throw new KnowledgeBaseException("FileSheet doesn't exists " + fileId);
+            }
+            FileSheet fileSheet = report.getFileSheets().stream().filter(searchFileSheet -> searchFileSheet.getUuid().equals(fileId)).findAny().orElse(null);
+            if (fileSheet == null) {
+                throw new KnowledgeBaseException("FileSheet doesn't exists " + fileId);
+            }
+            Path filePath = Paths.get(path + "/" + fileSheet.getUuid());
+            Resource resource = loadFileAsResource(filePath);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(fileSheet.getFileType()))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileSheet.getFileName() + "\"")
+                    .body(resource);
+        }
+
+        public Report getReportByFileId(String fileId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildReportByFileIdQuery(fileId)).build();
+            List<Report> reports = elasticsearchOperations.queryForList(searchQuery, Report.class);
+            return reports.stream().findFirst().orElse(null);
+        }
+
+        //
+        public Report getReportByLinkId(String linkId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildReportByLinkIdQuery(linkId)).build();
+            List<Report> reports = elasticsearchOperations.queryForList(searchQuery, Report.class);
+            return reports.stream().findFirst().orElse(null);
+        }
+
+        public HumanSheet getHumanSheetByLinkId(String linkId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildHumanSheetByLinkIdQuery(linkId)).build();
+            List<HumanSheet> humanSheets = elasticsearchOperations.queryForList(searchQuery, HumanSheet.class);
+            return humanSheets.stream().findFirst().orElse(null);
+        }
+
+        public IdentitySheet getIdentitySheetByLinkId(String linkId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildIdentitySheetByLinkIdQuery(linkId)).build();
+            List<IdentitySheet> identitySheets = elasticsearchOperations.queryForList(searchQuery, IdentitySheet.class);
+            return identitySheets.stream().findFirst().orElse(null);
+        }
+        //
+
+        public HumanSheet getHumanSheetByCommentId(String commentId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildHumanSheetByCommentIdQuery(commentId)).build();
+            List<HumanSheet> humanSheets = elasticsearchOperations.queryForList(searchQuery, HumanSheet.class);
+            return humanSheets.stream().findFirst().orElse(null);
+        }
+
+        public Report getReportByNtkId(String ntkId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildReportByNtkIdQuery(ntkId)).build();
+            List<Report> reports = elasticsearchOperations.queryForList(searchQuery, Report.class);
+            return reports.stream().findFirst().orElse(null);
+        }
+
+        public Report getReportByFileNtkId(String ntkId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildReportByFileNtkIdQuery(ntkId)).build();
+            List<Report> humanSheets = elasticsearchOperations.queryForList(searchQuery, Report.class);
+            return humanSheets.stream().findFirst().orElse(null);
+        }
+
+        public IdentitySheet getIdentitySheetByCommentId(String commentId) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildIdentitySheetByCommentIdQuery(commentId)).build();
+            List<IdentitySheet> identitySheets = elasticsearchOperations.queryForList(searchQuery, IdentitySheet.class);
+            return identitySheets.stream().findFirst().orElse(null);
+        }
+
+        @PostMapping("/search/humanSheet")
+        public List<HumanSheet> getHumanSheets(@RequestBody IdentitySheet identitySheet) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildIdentitySheetQuery(identitySheet)).build();
+            return elasticsearchOperations.queryForList(searchQuery, HumanSheet.class);
+        }
+
+        @PostMapping("/search/identitySheet")
+        public IdentitySheet getIdentitySheet(@RequestBody IdentitySheet identitySheet) {
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(buildIdentitySheetQuery(identitySheet)).build();
+            return elasticsearchOperations.queryForList(searchQuery, IdentitySheet.class).stream().findFirst().orElse(null);
+        }
+
+        public Resource loadFileAsResource(Path filePath) {
+            try {
+                Resource resource = new UrlResource(filePath.toUri());
+                if (resource.exists()) {
+                    return resource;
+                } else {
+                    throw new KnowledgeBaseException("something wrong");
+                }
+            } catch (MalformedURLException ex) {
+                throw new KnowledgeBaseException("Error occurred because " + ex.getMessage());
+            }
+        }
+
+        @DeleteMapping("/delete/report/file/{fileId}")
+        public Report deleteFile(@PathVariable String fileId) {
+            Report report = getReportByFileId(fileId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such file Id exists in the report");
+            }
+            report.getFileSheets().removeIf(fileSheet -> fileSheet.getUuid().equals(fileId));
+            return upsertReport(report, Instant.now().toEpochMilli());
+        }
+
+        //
+        @DeleteMapping("/delete/report/link/{linkId}")
+        public Report deleteReportLink(@PathVariable String linkId) {
+            Report report = getReportByLinkId(linkId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such link Id exists in the report");
+            }
+            report.getReportLinks().removeIf(reportLink -> reportLink.getUuid().equals(linkId));
+            return upsertReport(report, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/update/report/link")
+        public Report updateReportLink(@RequestBody RelationLink relationLink) {
+            Report report = getReportByLinkId(relationLink.getUuid());
+            if (report == null) {
+                throw new KnowledgeBaseException("no such link Id exists in the report");
+            }
+            relationLink.setUpdatedTimestamp(relationLink.getCreatedTimestamp());
+            report.getReportLinks().removeIf(reportLink -> {
+                if (reportLink.getUuid().equals(relationLink.getUuid())) {
+                    relationLink.setCreatedTimestamp(reportLink.getCreatedTimestamp());
+                    return true;
+                }
+                return false;
+            });
+            report.getReportLinks().add(relationLink);
+            return upsertReport(report, relationLink.getUpdatedTimestamp());
+        }
+
+        @PostMapping("/add/report/{reportId}/link")
+        public Report addReportLink(@PathVariable String reportId, @RequestBody RelationLink relationLink) {
+            Report report = searchReport(reportId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such report exists in the report");
+            }
+            report.getReportLinks().add(relationLink);
+            return upsertReport(report, relationLink.getCreatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/humanSheet/link/{linkId}")
+        public HumanSheet deleteHumanSheetLink(@PathVariable String linkId) {
+            HumanSheet humanSheet = getHumanSheetByLinkId(linkId);
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such link Id exists in the humanSheet");
+            }
+            humanSheet.getHumanLinks().removeIf(humanLink -> humanLink.getUuid().equals(linkId));
+            return upsertHumanSheet(humanSheet, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/add/humanSheet/{humanSheetId}/link")
+        public HumanSheet addHumanLink(@PathVariable String humanSheetId, @RequestBody RelationLink relationLink) {
+            HumanSheet humanSheet = searchHumanSheet(humanSheetId);
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such report exists in the report");
+            }
+            humanSheet.getHumanLinks().add(relationLink);
+            return upsertHumanSheet(humanSheet, relationLink.getCreatedTimestamp());
+        }
+
+        @PostMapping("/update/humanSheet/link")
+        public HumanSheet updateHumanSheetLink(@RequestBody RelationLink relationLink) {
+            HumanSheet humanSheet = getHumanSheetByLinkId(relationLink.getUuid());
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such link Id exists in the humanSheet");
+            }
+            relationLink.setUpdatedTimestamp(relationLink.getCreatedTimestamp());
+            humanSheet.getHumanLinks().removeIf(humanLink -> {
+                if (humanLink.getUuid().equals(relationLink.getUuid())) {
+                    relationLink.setCreatedTimestamp(humanLink.getCreatedTimestamp());
+                    return true;
+                }
+                return false;
+            });
+            humanSheet.getHumanLinks().add(relationLink);
+            return upsertHumanSheet(humanSheet, relationLink.getUpdatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/identitySheet/link/{linkId}")
+        public IdentitySheet deleteIdentitySheetLink(@PathVariable String linkId) {
+            IdentitySheet identitySheet = getIdentitySheetByLinkId(linkId);
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such file Id exists in the report");
+            }
+            identitySheet.getIdentityLinks().removeIf(identityLink -> identityLink.getUuid().equals(linkId));
+            return upsertIdentitySheet(identitySheet, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/add/identitySheet/{identitySheetId}/link")
+        public IdentitySheet addIdentityLink(@PathVariable String identitySheetId, @RequestBody RelationLink relationLink) {
+            IdentitySheet identitySheet = searchIdentitySheet(identitySheetId);
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such report exists in the report");
+            }
+            identitySheet.getIdentityLinks().add(relationLink);
+            return upsertIdentitySheet(identitySheet, relationLink.getCreatedTimestamp());
+        }
+
+        @PostMapping("/update/identitySheet/link")
+        public IdentitySheet updateIdentitySheetLink(@RequestBody RelationLink relationLink) {
+            IdentitySheet identitySheet = getIdentitySheetByLinkId(relationLink.getUuid());
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such link Id exists in the humanSheet");
+            }
+            relationLink.setUpdatedTimestamp(relationLink.getCreatedTimestamp());
+            identitySheet.getIdentityLinks().removeIf(identityLink -> {
+                if (identityLink.getUuid().equals(relationLink.getUuid())) {
+                    relationLink.setCreatedTimestamp(identityLink.getCreatedTimestamp());
+                    return true;
+                }
+                return false;
+            });
+            identitySheet.getIdentityLinks().add(relationLink);
+            return upsertIdentitySheet(identitySheet, relationLink.getUpdatedTimestamp());
+        }
+        //
+
+        @DeleteMapping("/delete/humanSheet/comment/{commentId}")
+        public HumanSheet deleteHumanSheetComment(@PathVariable String commentId) {
+            HumanSheet humanSheet = getHumanSheetByCommentId(commentId);
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the HumanSheet");
+            }
+            humanSheet.getHumanComments().removeIf(comment -> comment.getUuid().equals(commentId));
+            return upsertHumanSheet(humanSheet, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/add/humanSheet/{humanSheetId}/comment")
+        public HumanSheet addHumanSheetComment(@PathVariable String humanSheetId, @RequestBody Comment comment) {
+            HumanSheet humanSheet = searchHumanSheet(humanSheetId);
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such report exists in the report");
+            }
+            humanSheet.getHumanComments().add(comment);
+            return upsertHumanSheet(humanSheet, comment.getCreatedTimestamp());
+        }
+
+        @PostMapping("/update/humanSheet/comment")
+        public HumanSheet updateHumanSheetComment(@RequestBody Comment comment) {
+            HumanSheet humanSheet = getHumanSheetByCommentId(comment.getUuid());
+            if (humanSheet == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the HumanSheet");
+            }
+            comment.setUpdatedTimestamp(comment.getCreatedTimestamp());
+            humanSheet.getHumanComments().removeIf(humanComment -> {
+                if (humanComment.getUuid().equals(comment.getUuid())) {
+                    comment.setCreatedTimestamp(humanComment.getCreatedTimestamp());
+                    return true;
+                }
+                return false;
+            });
+            humanSheet.getHumanComments().add(comment);
+            return upsertHumanSheet(humanSheet, comment.getUpdatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/identitySheet/comment/{commentId}")
+        public IdentitySheet deleteIdentityComment(@PathVariable String commentId) {
+            IdentitySheet identitySheet = getIdentitySheetByCommentId(commentId);
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            identitySheet.getIdentityComments().removeIf(comment -> comment.getUuid().equals(commentId));
+            return upsertIdentitySheet(identitySheet, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/add/identity/{identitySheetId}/comment")
+        public IdentitySheet addIdentitySheetComment(@PathVariable String identitySheetId, @RequestBody Comment comment) {
+            IdentitySheet identitySheet = searchIdentitySheet(identitySheetId);
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such report exists in the report");
+            }
+            identitySheet.getIdentityComments().add(comment);
+            return upsertIdentitySheet(identitySheet, comment.getCreatedTimestamp());
+        }
+
+        @PostMapping("/update/identity/comment")
+        public IdentitySheet updateIdentitySheetComment(@RequestBody Comment comment) {
+            IdentitySheet identitySheet = getIdentitySheetByCommentId(comment.getUuid());
+            if (identitySheet == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            comment.setUpdatedTimestamp(comment.getCreatedTimestamp());
+            identitySheet.getIdentityComments().removeIf(identityComment -> {
+                if (identityComment.getUuid().equals(comment.getUuid())) {
+                    comment.setCreatedTimestamp(identityComment.getCreatedTimestamp());
+                    return true;
+                }
+                return false;
+            });
+            identitySheet.getIdentityComments().add(comment);
+            return upsertIdentitySheet(identitySheet, comment.getUpdatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/report/file/ntk/{ntkId}")
+        public Report deleteFileNtk(@PathVariable String ntkId) {
+            Report report = getReportByFileNtkId(ntkId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            long updatedTimestamp = Instant.now().toEpochMilli();
+            report.getFileSheets().stream().forEach(fileSheet -> {
+                fileSheet.getFileNtks().removeIf(fileNtk -> fileNtk.getUuid().equals(ntkId));
+                fileSheet.setUpdatedTimestamp(updatedTimestamp);
+            });
+            return upsertReport(report, updatedTimestamp);
+        }
+
+        @PostMapping("/add/report/file/{fileId}/ntk")
+        public Report addFileNtk(@PathVariable String fileId, @RequestBody NTK fileNtk) {
+            Report report = getReportByFileId(fileId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            report.getFileSheets().stream().forEach(fileSheet -> {
+                if (fileSheet.getUuid().equals(fileId)) {
+                    fileSheet.getFileNtks().add(fileNtk);
+                    fileSheet.setUpdatedTimestamp(fileNtk.getCreatedTimestamp());
+                }
+            });
+            return upsertReport(report, fileNtk.getCreatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/report/ntk/{ntkId}")
+        public Report deleteReportNtk(@PathVariable String ntkId) {
+            Report report = getReportByNtkId(ntkId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            report.getReportNtks().removeIf(reportNtk -> reportNtk.getUuid().equals(ntkId));
+            return upsertReport(report, Instant.now().toEpochMilli());
+        }
+
+        @PostMapping("/add/report/{reportId}/ntk")
+        public Report addReportNtk(@PathVariable String reportId, @RequestBody NTK reportNtk) {
+            Report report = searchReport(reportId);
+            if (report == null) {
+                throw new KnowledgeBaseException("no such comment Id exists in the identitySheet");
+            }
+            report.getReportNtks().add(reportNtk);
+            return upsertReport(report, reportNtk.getCreatedTimestamp());
+        }
+
+        @DeleteMapping("/delete/report/{reportId}")
+        public void deleteReport(@PathVariable String reportId) {
+            DeleteQuery deleteQuery = new DeleteQuery();
+            deleteQuery.setIndex("report");
+            QueryBuilder queryBuilder = QueryBuilders.matchQuery("uuid", reportId);
+            deleteQuery.setQuery(queryBuilder);
+            elasticsearchOperations.delete(deleteQuery);
+        }
+
+        @GetMapping("/search/report/{reportId}")
+        public Report searchReport(@PathVariable String reportId) {
+            GetQuery query = new GetQuery();
+            query.setId(reportId);
+            return elasticsearchOperations.queryForObject(query, Report.class);
+        }
+
+        @GetMapping("/search/humanSheet/{humanSheetId}")
+        public HumanSheet searchHumanSheet(@PathVariable String humanSheetId) {
+            GetQuery query = new GetQuery();
+            query.setId(humanSheetId);
+            return elasticsearchOperations.queryForObject(query, HumanSheet.class);
+        }
+
+        @GetMapping("/search/identitySheet/{identitySheetId}")
+        public IdentitySheet searchIdentitySheet(@PathVariable String identitySheetId) {
+            GetQuery query = new GetQuery();
+            query.setId(identitySheetId);
+            return elasticsearchOperations.queryForObject(query, IdentitySheet.class);
+        }
+
+        @GetMapping("/search/report/{from}/{to}")
+        public List<Report> searchReportByTimestamp(@PathVariable long from, @PathVariable long to) {
+            RangeQueryBuilder queryDate = QueryBuilders.rangeQuery("createdTimestamp").to(to).from(from);
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(queryDate).build();
+            return elasticsearchOperations.queryForList(searchQuery, Report.class);
+        }
+
+        @GetMapping("/search/reportCount/{from}/{to}")
+        public long countReportByTimestamp(@PathVariable long from, @PathVariable long to) {
+            RangeQueryBuilder queryDate = QueryBuilders.rangeQuery("createdTimestamp").to(to).from(from);
+            SearchQuery searchQuery = new NativeSearchQueryBuilder().withQuery(queryDate).build();
+            return elasticsearchOperations.count(searchQuery, Report.class);
+        }
+
+        @PostMapping("/search/report/identitySheet")
+        public List<Report> searchReportByIdentitySheet(@RequestBody IdentitySheet identitySheet) {
+            return elasticsearchOperations.queryForList(getReportByIdentitySheet(identitySheet), Report.class);
+        }
+
+        private SearchQuery getReportByIdentitySheet(IdentitySheet identitySheet) {
+            return new NativeSearchQueryBuilder().withQuery(buildReportByIdentitySheetQuery(identitySheet)).withIndices("report").withQuery(buildIdentitySheetQuery(identitySheet)).withIndices("human_sheet").build();
+        }
+
+        @PostMapping("/search/report/humanSheet")
+        public List<HumanSheet> searchHumanSheetByIdentitySheet(@RequestBody IdentitySheet identitySheet) {
+            return elasticsearchOperations.queryForList(getHumanByIdentitySheet(identitySheet), HumanSheet.class);
+        }
+
+        private SearchQuery getHumanByIdentitySheet(IdentitySheet identitySheet) {
+            return new NativeSearchQueryBuilder().withQuery(buildHumanSheetByIdentitySheetQuery(identitySheet)).withIndices("humansheet").withQuery(buildIdentitySheetQuery(identitySheet)).withIndices("identitysheet").build();
+        }
+
+        @PostMapping("/search/report/identitySheet/hits")
+        public long searchIdentityHits(@RequestBody IdentitySheet identitySheet) {
+            return elasticsearchOperations.count(getReportByIdentitySheet(identitySheet), Report.class);
+        }
+
+        @GetMapping("/search/report/identitySheet/{identityId}")
+        public List<Report> searchReportByIdentityId(@PathVariable String identityId) {
+            return elasticsearchOperations.queryForList(getReportByIdentitySheet(new IdentitySheet(null, identityId, null, null, null, null)), Report.class);
+        }
+
+
+        @GetMapping(value = "/all/report")
+        public Page<Report> searchAllReports() {
+            Pageable pageable = PageRequest.of(0, totalRecords, Sort.by("updatedTimestamp").descending());
+            NativeSearchQueryBuilder builder = new NativeSearchQueryBuilder().withQuery(matchAllQuery());
+            builder.withPageable(pageable);
+            SearchQuery searchQuery = builder.build();
+            return elasticsearchOperations.queryForPage(searchQuery, Report.class);
+        }
+
+        @GetMapping(value = "/all/report/count")
+        public long searchAllCount() {
+            return elasticsearchOperations.count(new NativeSearchQueryBuilder().withQuery(matchAllQuery()).build(), Report.class);
+        }
+    **/
+    public NestedQueryBuilder buildReportByIdentitySheetQuery(IdentitySheet identitySheet) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        if (StringUtils.isNotBlank(identitySheet.getIdentityId())) {
+            boolQueryBuilder.must(QueryBuilders.matchQuery("fileSheets.fileIdentities.identityId", identitySheet.getIdentityId()));
+        }
+        if (StringUtils.isNotBlank(identitySheet.getIdentityType())) {
+            boolQueryBuilder.must(QueryBuilders.matchQuery("fileSheets.fileIdentities.identityType", identitySheet.getIdentityType()));
+        }
+        return QueryBuilders.nestedQuery("fileSheets", QueryBuilders.nestedQuery("files.fileIdentities", boolQueryBuilder, ScoreMode.None), ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildReportByFileNtkIdQuery(String ntkId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("fileSheets.fileNtks.uuid", ntkId));
+        return QueryBuilders.nestedQuery("fileSheets", QueryBuilders.nestedQuery("files.fileNtks", boolQueryBuilder, ScoreMode.None), ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildReportByFileIdQuery(String fileId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("fileSheets.uuid", fileId));
+        return QueryBuilders.nestedQuery("fileSheets", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildReportByLinkIdQuery(String linkId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("reportLinks.uuid", linkId));
+        return QueryBuilders.nestedQuery("reportLinks", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildHumanSheetByLinkIdQuery(String linkId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("humanLinks.uuid", linkId));
+        return QueryBuilders.nestedQuery("humanLinks", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildIdentitySheetByLinkIdQuery(String linkId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("identityLinks.uuid", linkId));
+        return QueryBuilders.nestedQuery("identityLinks", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildHumanSheetByCommentIdQuery(String commentId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("humanComments.uuid", commentId));
+        return QueryBuilders.nestedQuery("humanComments", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildReportByNtkIdQuery(String ntkId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("reportNtks.uuid", ntkId));
+        return QueryBuilders.nestedQuery("reportNtks", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildIdentitySheetByCommentIdQuery(String commentId) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("identityComments.uuid", commentId));
+        return QueryBuilders.nestedQuery("identityComments", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public NestedQueryBuilder buildHumanSheetByIdentitySheetQuery(IdentitySheet identitySheet) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("humanIdentities.identityId", identitySheet.getIdentityId()));
+        boolQueryBuilder.must(QueryBuilders.matchQuery("humanIdentities.identityType", identitySheet.getIdentityType()));
+        return QueryBuilders.nestedQuery("humanIdentities", boolQueryBuilder, ScoreMode.None);
+    }
+
+    public BoolQueryBuilder buildIdentitySheetQuery(IdentitySheet identitySheet) {
+        BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery();
+        boolQueryBuilder.must(QueryBuilders.matchQuery("identityId", identitySheet.getIdentityId()));
+        boolQueryBuilder.must(QueryBuilders.matchQuery("identityType", identitySheet.getIdentityType()));
+        return boolQueryBuilder;
+    }
+
+}
+

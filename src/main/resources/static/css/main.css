@@ -1,0 +1,53 @@
+body {
+  background-color: white;
+  padding-top: 5rem;
+}
+.starter-template {
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+h1{
+	color: blue;
+}
+
+h2{
+	color: blue;
+}
+
+h6{
+   color: blue;
+}
+
+th, td {
+  padding: 8px;
+}
+
+tr.border_bottom td {
+  border-bottom:3px solid #FFFFFF;
+}
+tr:first-child{ border-bottom: 1px solid #555;}
+
+button {
+  background-color: lightgreen;
+  border: none;
+  color: lightblue;
+  padding: 8px 25px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  border-radius: 10px;
+}
+
+
+.wrapper {
+    text-align: center;
+}
+
+.button {
+    top: 80%;
+    margin:auto;
+    display:block;
+}
+

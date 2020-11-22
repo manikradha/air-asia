@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<HEAD>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <SCRIPT language="javascript">
+
+
+function openLink(evt, animName) {
+  var i, x, tablinks;
+  x = document.getElementsByClassName("tag");
+  for (i = 0; i < x.length; i++) {
+    x[i].style.display = "none";
+  }
+  tablinks = document.getElementsByClassName("tablink");
+  for (i = 0; i < x.length; i++) {
+    tablinks[i].className = tablinks[i].className.replace(" w3-pale-red", "");
+  }
+  document.getElementById(animName).style.display = "block";
+  evt.currentTarget.className += " w3-pale-red";
+}
+
+function validate() {
+if( document.getElementById("carNumber").value.length  == 0  ){
+    alert('Please enter car number');
+    return false;
+}
+
+if( document.getElementById("carColor").value.length  == 0  ){
+    alert('Please enter car colour');
+    return false;
+}
+
+if( document.getElementById("carType").value.length  == 0  ){
+    alert('Please enter car type');
+    return false;
+}
+
+
+}
+function onload(){
+  var val = $("#viewId").val();
+  openLink(event, val);
+}
+
+
+
+
+    </SCRIPT>
+    <link rel="stylesheet" th:href="@{webjars/bootstrap/4.2.1/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/main.css}"/>
+    <link rel="stylesheet" href="https://www.w3schools.com/w3css/4/w3.css">
+</HEAD>
+<body onload="onload()" th:style="'background: url(/images/airasia_bg.jpg); background-size: cover;'">
+<input type="hidden" id="viewId" th:value="${viewName}"/>
+<nav class="navbar navbar-inverse fixed-top" style="height:75px;">
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <img align="right" height="90" width="190" th:src="@{/images/airasia.png}">
+</nav>
+<div class="wrapper">
+<button class="tablink"
+        style="color: black; background-color: black;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;"
+        onclick="openLink(event, 'Left1')"><h6
+        style="color: red; text-shadow: 0px 0px 10px black, 0 0 10px black, 0px 0px 10px black;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+    Park</h6></button>
+<button class="tablink"
+        style="color: black; background-color: black;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;"
+        onclick="openLink(event, 'Left2')"><h6
+        style="color: red; text-shadow: 0px 0px 10px black, 0 0 10px black, 0px 0px 10px black;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+    Search</h6></button>
+ <button class="tablink"
+            style="color: black; background-color: black;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;"
+            onclick="openLink(event, 'Left3')"><h6
+            style="color: red; text-shadow: 0px 0px 10px black, 0 0 10px black, 0px 0px 10px black;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+        UnPark</h6></button>
+</div>
+
+<div id="Left1" class="w3-container tag w3-animate-left" style="width:800px; margin:0 auto;">
+    <form method="POST" th:action="@{/web/book/carParking}" enctype="multipart/form-data" onsubmit="return validate();">
+        <table width="850px">
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Car Number</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="carNumber" name="carNumber"/></td>
+                <td></td>
+            </tr>
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Car Type</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="carColor" name="carColor"/></td>
+                <td></td>
+            </tr>
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Car Colour</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="carType" name="carType"/></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>
+                    <div class="wrapper">
+                        <button style="color: red; background-color: white;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;font-weight:bold;"
+                                type="submit" class="button">Book
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <a th:href="@{/web/searchAllCarParking}">
+                        <input type="button"
+                               style="color: white; border-radius: 10px;background-color: red;font-family: Arial, Helvetica, sans-serif;"
+                               value="Search all my Bookings">
+                    </a>
+                </td>
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${totalSlots!=null}">
+            <tr>
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Total Slots: </h6> <span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${totalSlots}"></span></td>
+                <td>
+
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Available Slots: </h6><span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${availableSlots}"></span></td>
+                <td>
+
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${bookings!=null}">
+            <thead>
+            <tr style="border-bottom:3px solid #32CD32;">
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Slot Number </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Car Number</h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Type </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Colour </h6></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr style="border-bottom:1px solid #32CD32;" th:each="booking : ${bookings}">
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.slotNo}"></span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carNumber}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carColor}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carType}"> </span></td>
+            </tr>
+            </tbody>
+        </table>
+        </td>
+        </tr>
+        </tbody>
+        </table>
+    </form>
+    <hr/>
+</div>
+
+<div id="Left2" class="w3-container tag w3-animate-left" style="width:800px; margin:0 auto;">
+    <form method="POST" th:action="@{/web/search/carParking}" enctype="multipart/form-data">
+        <table width="850px">
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Car Number</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="carNumberSearch" name="carNumberSearch"/></td>
+                <td></td>
+            </tr>
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Car Type</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="carTypeSearch" name="carTypeSearch"/></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>
+                    <div class="wrapper">
+                        <button style="color: red; background-color: white;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;font-weight:bold;"
+                                type="submit" class="button">Search
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${totalSlots!=null}">
+            <tr>
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Total Slots: </h6> <span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${totalSlots}"></span></td>
+                <td>
+
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Available Slots: </h6><span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${availableSlots}"></span></td>
+                <td>
+
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${bookings!=null}">
+            <thead>
+            <tr style="border-bottom:3px solid #32CD32;">
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Slot Number </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Car Number</h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Type </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Colour </h6></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr style="border-bottom:1px solid #32CD32;" th:each="booking : ${bookings}">
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.slotNo}"></span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carNumber}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carColor}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carType}"> </span></td>
+            </tr>
+            </tbody>
+        </table>
+        </td>
+        </tr>
+        </tbody>
+        </table>
+    </form>
+    <hr/>
+</div>
+
+<div id="Left3" class="w3-container tag w3-animate-left" style="width:800px; margin:0 auto;">
+    <form method="POST" th:action="@{/web/unpark/car}" enctype="multipart/form-data">
+        <table width="850px">
+            <tr class="border_bottom">
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Slot Number</h6></td>
+                <td><input type="text" style="border-radius: 40px;font-family: Arial, Helvetica, sans-serif;"
+                           id="slotNo" name="slotNo"/></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>
+                    <div class="wrapper">
+                        <button style="color: red; background-color: white;font-family: Arial, Helvetica, sans-serif;border-radius: 60px;font-weight:bold;"
+                                type="submit" class="button">Unpark
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${totalSlots!=null}">
+            <tr>
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Total Slots: </h6> <span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${totalSlots}"></span></td>
+                <td>
+
+                <td><h6 style="color: white;font-family: Arial, Helvetica, sans-serif;">Available Slots: </h6><span
+                        style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                        th:text="${availableSlots}"></span></td>
+                <td>
+
+            </tr>
+        </table>
+        <table class="wrapper" width="850px" th:if="${bookings!=null}">
+            <thead>
+            <tr style="border-bottom:3px solid #32CD32;">
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Slot Number </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;">
+                    Car Number</h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Type </h6></th>
+                <th><h6 style="color: lightblue;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"> Car
+                    Colour </h6></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr style="border-bottom:1px solid #32CD32;" th:each="booking : ${bookings}">
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.slotNo}"></span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carNumber}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carColor}"> </span></td>
+                <td><span style="color: lightpink;font-family: Arial, Helvetica, sans-serif;font-weight:bold;"
+                          th:text="${booking.carType}"> </span></td>
+            </tr>
+            </tbody>
+        </table>
+        </td>
+        </tr>
+        </tbody>
+        </table>
+    </form>
+    <hr/>
+</div>
+</body>
+
+</html>

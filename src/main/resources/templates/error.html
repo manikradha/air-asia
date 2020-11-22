@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>ERROR</title>
+</head>
+<body>
+<h2 style="color: red;" >Fix below issues before next try!</h2>
+<div th:each="errm,status : ${#strings.arraySplit(message, '|')}">
+    <h3 style="color: red;" th:text="${errm}"/>
+</div>
+</body>
+</html>
